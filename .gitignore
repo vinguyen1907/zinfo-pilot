@@ -1,0 +1,13 @@
+venv/
+.venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+.env
+.greennode.json
+.agentbase/
+.pytest_cache/
+chroma_db/
+data/
+.idea/
