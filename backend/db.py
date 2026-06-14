@@ -7,7 +7,8 @@ load_dotenv()
 DB_PATH = os.getenv("DATABASE_PATH", "./data/conversations.db")
 
 _CREATE_SQL = """
-CREATE TABLE IF NOT EXISTS conversations (
+DROP TABLE IF EXISTS conversations;
+CREATE TABLE conversations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     email TEXT NOT NULL,
     role TEXT NOT NULL,
