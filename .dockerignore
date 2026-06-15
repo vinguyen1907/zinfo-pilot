@@ -1,22 +1,15 @@
-venv/
-.venv/
-
+.env
+.greennode.json
+.agentbase/
 __pycache__/
 **/__pycache__/
 *.pyc
 *.pyo
-
-.env
 .pytest_cache/
-
-# Data
+venv/
+.venv/
 chroma_db/
 data/
-
-# OS
-.DS_Store
-.greennode.json
-.agentbase/
-
-# IDE
 .idea/
+.git/
+docs/
