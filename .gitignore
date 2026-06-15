@@ -11,3 +11,5 @@ __pycache__/
 chroma_db/
 data/
 .idea/
+data/
+chroma_db/
