@@ -1,8 +1,7 @@
 import asyncio, json, os
 from contextlib import asynccontextmanager
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
-from fastapi.responses import StreamingResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
@@ -161,7 +160,10 @@ async def index(background_tasks: BackgroundTasks):
     background_tasks.add_task(run_full_index)
     return {"status": "indexing started"}
 
-# Serve frontend — mount last so API routes take priority
-_frontend = os.path.join(os.path.dirname(__file__), "..", "frontend")
-if os.path.isdir(_frontend):
-    app.mount("/", StaticFiles(directory=_frontend, html=True), name="static")
+# Serve frontend (single-file SPA — no separate static assets needed)
+_frontend = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "frontend"))
+_index = os.path.join(_frontend, "index.html")
+if os.path.isfile(_index):
+    @app.get("/")
+    async def root():
+        return FileResponse(_index)

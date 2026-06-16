@@ -5,7 +5,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-_CHROMA_HOST = os.getenv("CHROMA_HOST", "")
+# Strip any scheme (https://) from CHROMA_HOST — HttpClient takes only the hostname
+_raw_host = os.getenv("CHROMA_HOST", "")
+_CHROMA_HOST = _raw_host.removeprefix("https://").removeprefix("http://").rstrip("/")
 _CHROMA_PORT = int(os.getenv("CHROMA_PORT", "443").strip())
 _CHROMA_SSL = os.getenv("CHROMA_SSL", "true").lower() == "true"
 _CHROMA_PATH = os.getenv("CHROMA_PATH", "./chroma_db")
