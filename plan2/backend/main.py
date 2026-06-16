@@ -20,6 +20,23 @@ app = FastAPI()
 @app.on_event("startup")
 async def startup():
     await init_db()
+    await asyncio.to_thread(_reindex_if_empty)
+
+
+def _reindex_if_empty():
+    try:
+        from plan2.backend.chroma_client import get_collection
+        col = get_collection()
+        count = col.count()
+        if count == 0:
+            print("[startup] ChromaDB collection is empty — starting full re-index")
+            from plan2.backend.indexer import run_full_index
+            run_full_index()
+        else:
+            print(f"[startup] ChromaDB OK — {count} chunks already indexed")
+    except Exception as exc:
+        print(f"[startup] Could not check ChromaDB: {exc}")
+
 
 class ChatRequest(BaseModel):
     email: str
