@@ -13,3 +13,5 @@ data/
 .idea/
 .git/
 docs/
+plan2/
+tests/

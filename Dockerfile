@@ -14,8 +14,13 @@ RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/wh
 
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY plan2/ ./plan2/
+# Pre-download the embedding model so it's baked into the image.
+# Avoids a cold-start HuggingFace download (and any SSL issues) at runtime.
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')"
+
+COPY backend/ ./backend/
+COPY frontend/ ./frontend/
 
 EXPOSE 8080
 
-CMD ["uvicorn", "plan2.backend.main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8080"]
