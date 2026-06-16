@@ -53,7 +53,10 @@ async def chat(req: ChatRequest):
 
     if not chunks:
         async def no_access_stream():
-            msg = "I couldn't find any documentation you have access to for that question."
+            msg = (
+                "I couldn't find any documentation you have access to for that question. "
+                "If you believe this is an error, contact your Confluence administrator to verify your space permissions."
+            )
             yield f"data: {json.dumps({'token': msg})}\n\n"
             yield "data: [DONE]\n\n"
         return StreamingResponse(no_access_stream(), media_type="text/event-stream")
