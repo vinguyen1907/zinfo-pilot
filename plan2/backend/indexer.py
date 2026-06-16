@@ -2,20 +2,15 @@ import os
 import re
 from typing import Any
 
-import chromadb
-from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 from dotenv import load_dotenv
+from plan2.backend.chroma_client import get_collection as _collection
 
 load_dotenv()
 
-CHROMA_PATH = os.getenv("CHROMA_PATH", "./chroma_db")
 SPACE_KEYS = [k.strip() for k in os.getenv("CONFLUENCE_SPACE_KEYS", "").split(",") if k.strip()]
 
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 50
-
-_ef = SentenceTransformerEmbeddingFunction(model_name="sentence-transformers/all-MiniLM-L6-v2")
-
 
 def _split_text(text: str, chunk_size: int = CHUNK_SIZE, chunk_overlap: int = CHUNK_OVERLAP) -> list[str]:
     """Simple recursive character text splitter without langchain dependency."""
@@ -61,11 +56,6 @@ try:
 except Exception:
     def _splitter_split(text: str) -> list[str]:
         return _split_text(text)
-
-
-def _collection() -> chromadb.Collection:
-    client = chromadb.PersistentClient(path=CHROMA_PATH)
-    return client.get_or_create_collection("confluence_pages", embedding_function=_ef)
 
 
 def make_chunk_id(page_id: str, chunk_index: int) -> str:
