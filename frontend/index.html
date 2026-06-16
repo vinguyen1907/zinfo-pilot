@@ -387,22 +387,58 @@
     text-overflow: ellipsis;
   }
 
-  /* ---------- typing indicator ---------- */
-  .typing {
-    display: inline-flex;
+  /* ---------- status bubble (replaces dot typing indicator) ---------- */
+  .bubble--status { padding: 0; }
+
+  .status-phase {
+    display: flex;
     align-items: center;
-    gap: 5px;
-    padding: 15px 18px;
+    gap: 9px;
+    padding: 14px 16px;
+    font-size: 13.5px;
+    font-weight: 500;
+    color: var(--text-muted);
   }
-  .typing span {
-    width: 8px;
-    height: 8px;
+  .status-spin {
+    flex-shrink: 0;
+    width: 14px; height: 14px;
+    border: 2px solid var(--border);
+    border-top-color: var(--sky);
     border-radius: 50%;
-    background: var(--sky);
-    animation: bounce 1.3s infinite ease-in-out;
+    animation: spin 0.75s linear infinite;
   }
-  .typing span:nth-child(2) { animation-delay: 0.18s; }
-  .typing span:nth-child(3) { animation-delay: 0.36s; }
+  .status-label { flex: 1; }
+  .status-timer {
+    font-size: 12px;
+    color: #94a3b8;
+    font-variant-numeric: tabular-nums;
+    min-width: 34px;
+    text-align: right;
+  }
+
+  /* compact status row shown at bottom of bubble once tokens start */
+  .status-phase--generating {
+    padding: 7px 16px 11px;
+    border-top: 1px solid var(--border-soft);
+    font-size: 12px;
+    font-weight: 400;
+  }
+  .status-phase--generating .status-spin {
+    width: 11px; height: 11px;
+    border-width: 1.5px;
+  }
+
+  /* text body inside streaming bubble */
+  .stream-body { padding: 12px 16px 2px; }
+
+  /* elapsed time shown below the finished bubble */
+  .response-meta {
+    margin-top: 5px;
+    padding-left: 2px;
+    font-size: 11.5px;
+    color: #94a3b8;
+  }
+  .response-meta::before { content: '⏱ '; }
 
   /* ---------- empty state ---------- */
   .empty {
@@ -518,10 +554,7 @@
     from { transform: translateY(10px); }
     to   { transform: translateY(0); }
   }
-  @keyframes bounce {
-    0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
-    30% { transform: translateY(-6px); opacity: 1; }
-  }
+  @keyframes spin { to { transform: rotate(360deg); } }
   @keyframes blink { 50% { opacity: 0; } }
 </style>
 </head>
@@ -715,16 +748,35 @@ function renderCitations(citations) {
   return wrap;
 }
 
-function showTypingIndicator() {
+function showStatusBubble() {
   const row = makeRow('assistant');
-  row.dataset.typing = 'true';
   const bubble = document.createElement('div');
-  bubble.className = 'bubble typing';
-  for (let i = 0; i < 3; i++) bubble.appendChild(document.createElement('span'));
+  bubble.className = 'bubble bubble--status';
+
+  const phase = document.createElement('div');
+  phase.className = 'status-phase';
+  const spin = document.createElement('div');
+  spin.className = 'status-spin';
+  const label = document.createElement('span');
+  label.className = 'status-label';
+  label.textContent = 'Searching knowledge base…';
+  const timer = document.createElement('span');
+  timer.className = 'status-timer';
+  timer.textContent = '0.0s';
+  phase.appendChild(spin);
+  phase.appendChild(label);
+  phase.appendChild(timer);
+  bubble.appendChild(phase);
   row.appendChild(bubble);
   el.inner.appendChild(row);
   scrollToBottom(true);
-  return row;
+
+  const startTime = performance.now();
+  const timerId = setInterval(() => {
+    timer.textContent = ((performance.now() - startTime) / 1000).toFixed(1) + 's';
+  }, 100);
+
+  return { row, bubble, phase, label, timer, timerId, startTime };
 }
 
 function scrollToBottom(force) {
@@ -813,13 +865,14 @@ async function sendMessage() {
   isStreaming = true;
   setSendEnabled();
 
-  const typingRow = showTypingIndicator();
+  const statusObj = showStatusBubble();
 
   try {
-    await streamAssistant(text, typingRow);
+    await streamAssistant(text, statusObj);
   } catch (err) {
-    typingRow.remove();
-    renderMessage('assistant', '⚠️ Sorry — I couldn’t reach the knowledge base just now. Please try again.');
+    clearInterval(statusObj.timerId);
+    statusObj.row.remove();
+    renderMessage(‘assistant’, ‘⚠️ Sorry — I couldn’t reach the knowledge base just now. Please try again.’);
   } finally {
     isStreaming = false;
     setSendEnabled();
@@ -827,34 +880,58 @@ async function sendMessage() {
   }
 }
 
-/* ----- swap the typing bubble into a live, streaming text bubble ---- */
-function beginAssistantBubble(typingRow) {
-  typingRow.dataset.typing = '';
-  const bubble = typingRow.querySelector('.bubble');
-  bubble.className = 'bubble';
-  bubble.innerHTML = '<span class="stream-text"></span><span class="caret"></span>';
-  const textEl = bubble.querySelector('.stream-text');
+/* ----- upgrade the status bubble into a live, streaming text bubble ---- */
+function beginAssistantBubble(statusObj) {
+  const { row, bubble, phase, label, timer, timerId, startTime } = statusObj;
+  label.textContent = 'Generating…';
+
+  // Text body sits above the status row; hidden until first token arrives.
+  const body = document.createElement('div');
+  body.className = 'stream-body';
+  body.style.display = 'none';
+  const textEl = document.createElement('span');
+  textEl.className = 'stream-text';
+  const caretEl = document.createElement('span');
+  caretEl.className = 'caret';
+  body.appendChild(textEl);
+  body.appendChild(caretEl);
+  bubble.insertBefore(body, phase);
+
   let rawText = '';
+  let firstToken = true;
+
   return {
-    row: typingRow,
+    row,
     bubble,
     append(tok) {
       rawText += tok;
-      textEl.textContent = rawText;  // raw during stream; markdown on finish
+      if (firstToken) {
+        firstToken = false;
+        body.style.display = '';
+        phase.classList.add('status-phase--generating');
+      }
+      textEl.textContent = rawText;
       scrollToBottom();
     },
     finish(citations) {
-      bubble.innerHTML = renderMarkdown(rawText);  // re-render as formatted HTML
+      clearInterval(timerId);
+      const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
+      bubble.classList.remove('bubble--status');
+      bubble.innerHTML = renderMarkdown(rawText);
       if (citations && citations.length) {
-        typingRow.appendChild(renderCitations(citations));
+        row.appendChild(renderCitations(citations));
       }
+      const meta = document.createElement('div');
+      meta.className = 'response-meta';
+      meta.textContent = elapsed + 's';
+      row.appendChild(meta);
       scrollToBottom(true);
     },
   };
 }
 
 /* ------------------------- SSE streaming -------------------------- */
-async function streamAssistant(prompt, typingRow) {
+async function streamAssistant(prompt, statusObj) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 60000);
 
@@ -866,7 +943,7 @@ async function streamAssistant(prompt, typingRow) {
   });
   if (!res.ok || !res.body) { clearTimeout(timeoutId); throw new Error('chat ' + res.status); }
 
-  const bub = beginAssistantBubble(typingRow);
+  const bub = beginAssistantBubble(statusObj);
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
