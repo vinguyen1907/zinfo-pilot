@@ -1,5 +1,3 @@
-import os
-
 from dotenv import load_dotenv
 from plan2.backend.chroma_client import get_collection as _collection
 from plan2.backend.confluence import get_accessible_page_ids
