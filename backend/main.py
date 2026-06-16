@@ -101,6 +101,7 @@ async def webhook(request: Request):
 async def health():
     return {"status": "ok"}
 
+
 @app.get("/stats")
 async def stats():
     def _get_stats():
