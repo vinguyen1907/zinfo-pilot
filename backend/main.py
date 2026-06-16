@@ -1,9 +1,11 @@
-import asyncio, json, os
+import asyncio, json, logging, os
 from contextlib import asynccontextmanager
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
 
 from backend.db import init_db, save_message, get_history
 from backend.retriever import retrieve
@@ -13,32 +15,9 @@ from backend.confluence import validate_webhook
 load_dotenv()
 
 
-def _reindex_if_empty():
-    try:
-        from backend.chroma_client import get_collection
-        col = get_collection()
-        count = col.count()
-        if count == 0:
-            import logging
-            logging.getLogger(__name__).info(
-                "[startup] ChromaDB collection is empty — starting full re-index"
-            )
-            from backend.indexer import run_full_index
-            run_full_index()
-        else:
-            import logging
-            logging.getLogger(__name__).info(
-                "[startup] ChromaDB OK — %d chunks already indexed", count
-            )
-    except Exception as exc:
-        import logging
-        logging.getLogger(__name__).warning("[startup] Could not check ChromaDB: %s", exc)
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
-    asyncio.create_task(asyncio.to_thread(_reindex_if_empty))
     yield
 
 app = FastAPI(lifespan=lifespan)
@@ -77,7 +56,8 @@ async def chat(req: ChatRequest):
             await save_message(req.email, "assistant", response_text, citations)
             yield f"data: {json.dumps({'citations': citations})}\n\n"
             yield "data: [DONE]\n\n"
-        except Exception:
+        except Exception as exc:
+            logger.exception("Chat stream error: %s", exc)
             yield f"data: {json.dumps({'error': 'Something went wrong generating a response. Please try again.'})}\n\n"
             yield "data: [DONE]\n\n"
 
@@ -160,10 +140,6 @@ async def index(background_tasks: BackgroundTasks):
     background_tasks.add_task(run_full_index)
     return {"status": "indexing started"}
 
-# Serve frontend (single-file SPA — no separate static assets needed)
-_frontend = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "frontend"))
-_index = os.path.join(_frontend, "index.html")
-if os.path.isfile(_index):
-    @app.get("/")
-    async def root():
-        return FileResponse(_index)
+@app.get("/")
+async def root():
+    return FileResponse("/app/frontend/index.html")
