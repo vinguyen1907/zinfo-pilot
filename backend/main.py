@@ -13,9 +13,33 @@ from backend.confluence import validate_webhook
 
 load_dotenv()
 
+
+def _reindex_if_empty():
+    try:
+        from backend.chroma_client import get_collection
+        col = get_collection()
+        count = col.count()
+        if count == 0:
+            import logging
+            logging.getLogger(__name__).info(
+                "[startup] ChromaDB collection is empty — starting full re-index"
+            )
+            from backend.indexer import run_full_index
+            run_full_index()
+        else:
+            import logging
+            logging.getLogger(__name__).info(
+                "[startup] ChromaDB OK — %d chunks already indexed", count
+            )
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("[startup] Could not check ChromaDB: %s", exc)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    asyncio.create_task(asyncio.to_thread(_reindex_if_empty))
     yield
 
 app = FastAPI(lifespan=lifespan)
@@ -98,16 +122,38 @@ async def webhook(request: Request):
 async def health():
     return {"status": "ok"}
 
-@app.get("/status")
-async def status():
-    import chromadb
-    chroma_path = os.getenv("CHROMA_PATH", "./chroma_db")
+@app.get("/stats")
+async def stats():
+    def _get_stats():
+        from backend.chroma_client import get_collection
+        col = get_collection()
+        total_chunks = col.count()
+        if total_chunks == 0:
+            return {"total_chunks": 0, "total_pages": 0, "spaces": {}}
+
+        result = col.get(include=["metadatas"])
+        metadatas = result.get("metadatas", [])
+
+        pages: dict[str, dict] = {}
+        spaces: dict[str, int] = {}
+        for m in metadatas:
+            pid = m.get("page_id", "")
+            if pid and pid not in pages:
+                pages[pid] = {"title": m.get("page_title", ""), "url": m.get("page_url", "")}
+            space = m.get("space_key", "unknown")
+            spaces[space] = spaces.get(space, 0) + 1
+
+        return {
+            "total_chunks": total_chunks,
+            "total_pages": len(pages),
+            "spaces": spaces,
+            "sample_pages": list(pages.values())[:5],
+        }
+
     try:
-        client = chromadb.PersistentClient(path=chroma_path)
-        col = client.get_or_create_collection("confluence_pages")
-        return {"indexed_chunks": col.count()}
+        return await asyncio.to_thread(_get_stats)
     except Exception as exc:
-        return {"indexed_chunks": 0, "error": str(exc)}
+        raise HTTPException(status_code=503, detail=str(exc))
 
 @app.post("/index")
 async def index(background_tasks: BackgroundTasks):

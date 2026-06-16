@@ -3,31 +3,21 @@ import os
 import re
 from typing import Any
 
-import chromadb
-from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 from dotenv import load_dotenv
+
+from backend.chroma_client import get_collection as _collection
 
 logger = logging.getLogger(__name__)
 
 load_dotenv()
 
-CHROMA_PATH = os.getenv("CHROMA_PATH", "./chroma_db")
 SPACE_KEYS = [k.strip() for k in os.getenv("CONFLUENCE_SPACE_KEYS", "").split(",") if k.strip()]
 
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 50
 
-_ef = None
-
-def _get_ef() -> SentenceTransformerEmbeddingFunction:
-    global _ef
-    if _ef is None:
-        _ef = SentenceTransformerEmbeddingFunction(model_name="sentence-transformers/all-MiniLM-L6-v2")
-    return _ef
-
 
 def _split_text(text: str, chunk_size: int = CHUNK_SIZE, chunk_overlap: int = CHUNK_OVERLAP) -> list[str]:
-    """Simple recursive character text splitter without langchain dependency."""
     if len(text) <= chunk_size:
         return [text] if text.strip() else []
 
@@ -40,7 +30,6 @@ def _split_text(text: str, chunk_size: int = CHUNK_SIZE, chunk_overlap: int = CH
             if chunk.strip():
                 chunks.append(chunk)
             break
-        # Try to split on newline, then space
         split_pos = end
         for sep in ["\n\n", "\n", " "]:
             pos = text.rfind(sep, start, end)
@@ -56,7 +45,6 @@ def _split_text(text: str, chunk_size: int = CHUNK_SIZE, chunk_overlap: int = CH
     return chunks
 
 
-# Try langchain splitter; fall back to built-in implementation
 try:
     try:
         from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -70,11 +58,6 @@ try:
 except Exception:
     def _splitter_split(text: str) -> list[str]:
         return _split_text(text)
-
-
-def _collection() -> chromadb.Collection:
-    client = chromadb.PersistentClient(path=CHROMA_PATH)
-    return client.get_or_create_collection("confluence_pages", embedding_function=_get_ef())
 
 
 def make_chunk_id(page_id: str, chunk_index: int) -> str:
@@ -102,7 +85,11 @@ def split_page_into_chunks(
 
 
 def _strip_html(html: str) -> str:
-    return re.sub(r"<[^>]+>", " ", html).strip()
+    try:
+        from bs4 import BeautifulSoup
+        return BeautifulSoup(html, "lxml").get_text(separator=" ").strip()
+    except Exception:
+        return re.sub(r"<[^>]+>", " ", html).strip()
 
 
 def index_page(page_data: dict[str, Any]):
