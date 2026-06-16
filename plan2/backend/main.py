@@ -123,6 +123,39 @@ async def index():
     task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
     return {"status": "indexing started"}
 
+@app.get("/stats")
+async def stats():
+    def _get_stats():
+        from plan2.backend.chroma_client import get_collection
+        col = get_collection()
+        total_chunks = col.count()
+        if total_chunks == 0:
+            return {"total_chunks": 0, "total_pages": 0, "spaces": {}}
+
+        result = col.get(include=["metadatas"])
+        metadatas = result.get("metadatas", [])
+
+        pages: dict[str, dict] = {}
+        spaces: dict[str, int] = {}
+        for m in metadatas:
+            pid = m.get("page_id", "")
+            if pid and pid not in pages:
+                pages[pid] = {"title": m.get("page_title", ""), "url": m.get("page_url", "")}
+            space = m.get("space_key", "unknown")
+            spaces[space] = spaces.get(space, 0) + 1
+
+        return {
+            "total_chunks": total_chunks,
+            "total_pages": len(pages),
+            "spaces": spaces,
+            "sample_pages": list(pages.values())[:5],
+        }
+
+    try:
+        return await asyncio.to_thread(_get_stats)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
 # Static files (frontend) — mount last so API routes take priority
 frontend_path = os.path.join(os.path.dirname(__file__), "..", "frontend")
 if os.path.isdir(frontend_path):
