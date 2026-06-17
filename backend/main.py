@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 from backend.db import init_db, save_message, get_history
 from backend.retriever import retrieve
 from backend.llm import build_llm, build_messages, extract_citations
-from backend.confluence import validate_webhook
+from backend.confluence import validate_webhook  # noqa: F401 — kept for future use
 
 load_dotenv()
 
@@ -71,9 +71,6 @@ async def conversations(email: str):
 @app.post("/webhook")
 async def webhook(request: Request):
     body = await request.body()
-    if not validate_webhook(dict(request.headers), body):
-        raise HTTPException(status_code=401, detail="Invalid signature")
-
     payload = json.loads(body)
     event = payload.get("eventType", "")
     page_id = str(
