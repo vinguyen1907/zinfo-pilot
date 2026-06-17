@@ -10,6 +10,9 @@ Internal knowledge is scattered across hundreds of Confluence pages that are har
 
 **Target users:** Employees at VNG/Zalo who need fast answers from internal IT documentation without digging through Confluence manually.
 
+**Demo Confluence instance:** https://zalo-info-pilot.atlassian.net
+**Demo email:** tindpt@vng.com.vn
+
 ---
 
 ## Architecture
